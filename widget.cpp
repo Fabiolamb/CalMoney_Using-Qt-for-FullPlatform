@@ -1,4 +1,5 @@
 ﻿#include "widget.h"
+#include "qapplication.h"
 
 #include <QCalendarWidget>
 #include <QCheckBox>
@@ -42,6 +43,13 @@ Widget::Widget(QWidget *parent)
     layout->addWidget(datesGroupBox, 1, 0);
     layout->addWidget(rightGroupBox, 2, 0);
     //layout->addLayout(layout, 0, 0);
+
+    // 设置网格布局的行列拉伸因子，确保各部分能够适应窗口大小变化
+    layout->setRowStretch(0, 1);
+    layout->setRowStretch(1, 0);  // datesGroupBox 不需要拉伸
+    layout->setRowStretch(2, 0);  // rightGroupBox 不需要拉伸
+    layout->setColumnStretch(0, 1);
+
     layout->setSizeConstraint(QLayout::SetFixedSize);
     setLayout(layout);
 
@@ -56,6 +64,11 @@ Widget::Widget(QWidget *parent)
 inline void Widget::selectedDateChanged()
 {
     currentDateEdit->setDate(calendar->selectedDate());
+    calendar->setFocus();         // 确保日历部件获得焦点
+    calendar->update();           // 强制刷新日历部件
+    QApplication::processEvents(); // 强制刷新 UI
+
+    //currentDateEdit->setDate(calendar->selectedDate());
 }
 
 // 槽函数，响应最大日期更改，将日历的最大日期设置为新日期。
@@ -67,22 +80,35 @@ inline void Widget::maximumDateChanged(QDate date)
 // 创建预览组框，包含一个日历部件，并设置日历的最小和最大日期，以及网格可见性。将日历部件添加到预览布局，并将布局设置为预览组框的布局。
 inline void Widget::createPreviewGroupBox()
 {
-    previewGroupBox = new QGroupBox(tr("Calendar"));
+    previewGroupBox = new QGroupBox();
 
     calendar = new QCalendarWidget;
     calendar->setMinimumDate(QDate(1900, 1, 1));
     calendar->setMaximumDate(QDate(3000, 1, 1));
     calendar->setGridVisible(true);
+    calendar->setNavigationBarVisible(false);
+    calendar->setVerticalHeaderFormat(QCalendarWidget::NoVerticalHeader);
+
+
+    connect(calendar, &QCalendarWidget::selectionChanged, this, &Widget::selectedDateChanged);
 
     previewLayout = new QGridLayout;
-    previewLayout->addWidget(calendar, 0, 0, Qt::AlignCenter);
+    //previewLayout->addWidget(calendar, 0, 0, Qt::AlignCenter);
+    previewLayout->addWidget(calendar, 0, 0);
+    // 设置行列的拉伸因子，确保 calendar 能够填满整个布局
+    previewLayout->setRowStretch(0, 1);
+    previewLayout->setColumnStretch(0, 1);
+
     previewGroupBox->setLayout(previewLayout);
+
+    // 设置 calendar 的大小策略，确保它能够占用尽可能多的空间
+    calendar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
 inline void Widget::createDatesGroupBox()
 {
     // 创建日期组框，包含两个日期编辑器（currentDateEdit 和 maximumDateEdit）及其标签（currentDateLabel 和 maximumDateLabel），并设置它们的显示格式、日期范围和初始日期。
-    datesGroupBox = new QGroupBox(tr("Dates"));
+    datesGroupBox = new QGroupBox();
 
     currentDateEdit = new QDateEdit;
     currentDateEdit->setDisplayFormat("MMM d yyyy");
@@ -95,8 +121,7 @@ inline void Widget::createDatesGroupBox()
 
     maximumDateEdit = new QDateEdit;
     maximumDateEdit->setDisplayFormat("MMM d yyyy");
-    maximumDateEdit->setDateRange(calendar->minimumDate(),
-                                  calendar->maximumDate());
+    maximumDateEdit->setDateRange(calendar->minimumDate(), calendar->maximumDate());
     maximumDateEdit->setDate(calendar->maximumDate());
 
     maximumDateLabel = new QLabel(tr("Ma&ximum Date:"));
@@ -104,7 +129,7 @@ inline void Widget::createDatesGroupBox()
 
     // 连接信号和槽，将日期编辑器的日期更改信号连接到日历和 Widget 的相应槽函数。创建日期组框的网格布局，将组件添加到布局中，并设置布局。
     connect(currentDateEdit, &QDateEdit::dateChanged, calendar, &QCalendarWidget::setSelectedDate);
-    connect(calendar, &QCalendarWidget::selectionChanged, this, &Widget::selectedDateChanged);
+    //connect(calendar, &QCalendarWidget::selectionChanged, this, &Widget::selectedDateChanged);
 
     connect(maximumDateEdit, &QDateEdit::dateChanged, this, &Widget::maximumDateChanged);
 
@@ -312,6 +337,7 @@ void Widget::createRightInfoBar()
             return;
         }
         file.close();
+
         qDebug() << "File contents cleared: " << filename;
     });
 
@@ -325,6 +351,7 @@ void Widget::createRightInfoBar()
             QSettings settings("MyCompany", "MyApp");
             filename = settings.value("Filename").toString();
             qDebug() << "Using filename: " << filename;
+
         }
         QFile file(filename);
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -341,6 +368,7 @@ void Widget::createRightInfoBar()
         // 创建新窗口来显示文件内容
         //QDialog *viewDialog = new QDialog(this);
         QWidget *viewDialog = new QWidget();
+
         viewDialog->setWindowTitle(tr("File Contents"));
         QVBoxLayout *layout = new QVBoxLayout(viewDialog);
         QTextEdit *textEdit = new QTextEdit(viewDialog);
@@ -352,6 +380,10 @@ void Widget::createRightInfoBar()
         viewDialog->resize(400, 300);
         viewDialog->show();
 
+        viewDialog->activateWindow();
+        viewDialog->raise();
+        QApplication::processEvents();  // 强制处理事件循环
+
         connect(close, &QPushButton::clicked, this, [=]() {
             viewDialog->close();
         });
@@ -362,18 +394,30 @@ void Widget::createRightInfoBar()
     rightLayout->addWidget(label);
 
     QGridLayout *spinboxLayout = new QGridLayout;
-    QGroupBox *spinboxGroupbox = new QGroupBox(tr("Time Record"));
+    QGroupBox *spinboxGroupbox = new QGroupBox;
     spinboxLayout->addWidget(hourSpinBox, 0, 0);
     spinboxLayout->addWidget(minuteSpinBox, 0, 1);
-    spinboxLayout->addWidget(hourSpinBox2, 1, 0);
-    spinboxLayout->addWidget(minuteSpinBox2, 1, 1);
+    spinboxLayout->addWidget(hourSpinBox2, 0, 2);
+    spinboxLayout->addWidget(minuteSpinBox2, 0, 3);
     spinboxGroupbox->setLayout(spinboxLayout);
     rightLayout->addWidget(spinboxGroupbox);
     rightLayout->addWidget(logTextEdit);
-    rightLayout->addWidget(saveButton);
-    rightLayout->addWidget(calbutton);
-    rightLayout->addWidget(cleanButton);
-    rightLayout->addWidget(viewButton);
+
+    QGridLayout *buttonlayout = new QGridLayout;
+    buttonlayout->addWidget(saveButton, 0, 0);
+    buttonlayout->addWidget(calbutton, 0, 1);
+    buttonlayout->addWidget(cleanButton, 1, 0);
+    buttonlayout->addWidget(viewButton, 1, 1);
+
+    QGroupBox *buttongroupbox = new QGroupBox;
+    buttongroupbox->setLayout(buttonlayout);
+
+    rightLayout->addWidget(buttongroupbox);
+
+    // rightLayout->addWidget(saveButton);
+    // rightLayout->addWidget(calbutton);
+    // rightLayout->addWidget(cleanButton);
+    // rightLayout->addWidget(viewButton);
 
     rightGroupBox->setLayout(rightLayout);
 }
